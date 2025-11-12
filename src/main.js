@@ -1,6 +1,10 @@
 import { getCategories, getProduct, getProducts } from "./api/productApi.js";
 import { ProductList } from "./components/ProductList.js";
+import { destroyCartList } from "./components/cart/CartList.js";
+import { showToast } from "./components/toast/Toast.js";
+import { closeCartModal, openCartModal } from "./pages/CartModal.js";
 import { NotFoundPage } from "./pages/NotFoundPage.js";
+import { cartStore } from "./store/cartStore.js";
 import { updateCategoryUI } from "./utils/categoryUI.js";
 import { findRoute, initRouter, push } from "./utils/router.js";
 
@@ -10,8 +14,10 @@ const enableMocking = () =>
       onUnhandledRequest: "bypass",
     }),
   );
+const productCache = new Map();
 
 const render = async () => {
+  destroyCartList();
   const $root = document.querySelector("#root");
 
   const { route, params } = findRoute(location.pathname);
@@ -25,21 +31,30 @@ const render = async () => {
   if (route.path === "/") {
     $root.innerHTML = route.component({ loading: true });
     const query = new URLSearchParams(location.search);
+    selectedCat1 = query.get("category1") || null;
+    selectedCat2 = query.get("category2") || null;
     const search = query.get("search") || "";
-    const limit = Number(query.get("limit")) || 20;
+    const limit = Number(query.get("limit")) || 500;
     const sort = query.get("sort") || "price_asc";
     //TODO : Q. 병렬 구성은 어려울까?? (렌더링을 html태그 단위로 하게 될것같아서, 내부에서 처리해야하나???)
     const [categories, products] = await Promise.all([
       getCategories(),
       getProducts({ search: search, category1: selectedCat1, category2: selectedCat2, limit, sort }),
     ]);
+
+    products.products.forEach((product) => {
+      productCache.set(product.productId, product);
+    });
     $root.innerHTML = route.component({
       categories,
       products,
       loading: false,
+      selectedCat1,
+      selectedCat2,
+      currentSearch: search,
     });
   } else if (route.path === "/cart") {
-    $root.innerHTML = route.component({ cartProducts: ["pr"] });
+    $root.innerHTML = route.component();
   } else if (route.path === "/products/:id") {
     $root.innerHTML = route.component({ loading: true });
     const productId = params[0];
@@ -55,7 +70,7 @@ const render = async () => {
 const refreshProducts = async () => {
   const query = new URLSearchParams(location.search);
   const search = query.get("search") || "";
-  const limit = Number(query.get("limit")) || 20;
+  const limit = Number(query.get("limit")) || 500;
   const sort = query.get("sort") || "price_asc";
   const [products] = await Promise.all([
     getProducts({ search, category1: selectedCat1, category2: selectedCat2, limit, sort }),
@@ -71,7 +86,14 @@ const refreshProducts = async () => {
   query.set("search", "");
 };
 
-//TODO: Q. 이렇게 모든 액션에 대해 이벤트 등록을 해야한다고??
+const pushWithNoRender = ({ path, selectedCat1 = null, selectedCat2 = null }) => {
+  const isHome = location.pathname === "/";
+  push(path, { silent: isHome });
+  if (isHome) {
+    refreshProducts();
+    updateCategoryUI(selectedCat1, selectedCat2);
+  }
+};
 /* 이벤트 등록 영역 */
 // 카테고리 상태 관리
 let selectedCat1 = null;
@@ -79,6 +101,64 @@ let selectedCat2 = null;
 // 통합 클릭 이벤트 핸들러
 document.body.addEventListener("click", (e) => {
   const target = e.target;
+
+  //장바구니 이동
+  const openCartModalBtn = target.closest("#cart-icon-btn");
+  if (openCartModalBtn) {
+    e.preventDefault();
+    openCartModal();
+    return;
+  }
+  const closeCartModalBtn = target.closest("#cart-modal-close-btn");
+  const closeCartOverlay = target.closest(".cart-modal-overlay");
+  const closeCart = closeCartModalBtn || closeCartOverlay;
+  if (closeCart) {
+    e.preventDefault();
+    closeCartModal();
+    return;
+  }
+
+  // 장바구니 추가 버튼 클릭
+  const addToCartBtnMain = target.closest(".add-to-cart-btn");
+  const addToCartBtnDetail = target.closest("#add-to-cart-btn");
+  const addToCartBtn = addToCartBtnDetail || addToCartBtnMain;
+
+  if (addToCartBtn) {
+    e.stopPropagation();
+    const product = productCache.get(addToCartBtn.dataset.productId);
+
+    const quantityInput = document.getElementById("quantity-input");
+    const quantity = quantityInput ? Math.max(1, Number(quantityInput.value) || 1) : 1;
+
+    cartStore.addToCart({ ...product, quantity });
+    showToast("addCart");
+    return;
+  }
+
+  // 장바구니 갯수 변경
+  const cartIncreaseBtn = target.closest(".quantity-increase-btn");
+  const cartDecreaseBtn = target.closest(".quantity-decrease-btn");
+  if (cartIncreaseBtn) {
+    console.log("increase clicked");
+    const productId = cartIncreaseBtn.dataset.productId;
+    cartStore.addToCart({ productId: productId });
+  }
+  if (cartDecreaseBtn) {
+    const productId = cartDecreaseBtn.dataset.productId;
+    cartStore.decreaseQuantity(productId);
+  }
+
+  const cartQuantityIncreaseBtn = target.closest("#quantity-increase");
+  const cartQuantityDecreaseBtn = target.closest("#quantity-decrease");
+  if (cartQuantityIncreaseBtn) {
+    console.log("increase clicked");
+    const quantityInput = document.getElementById("quantity-input");
+    quantityInput.value = Number(quantityInput.value) + 1;
+  }
+  if (cartQuantityDecreaseBtn) {
+    const quantityInput = document.getElementById("quantity-input");
+    quantityInput.value = Math.max(1, Number(quantityInput.value) - 1);
+  }
 
   //상품 카드 클릭
   const productCard = target.closest(".product-card");
@@ -90,7 +170,7 @@ document.body.addEventListener("click", (e) => {
   // 카테고리 필터 클릭
   const resetBtn = target.closest('[data-breadcrumb="reset"]');
   const cat1Btn = target.closest(".category1-filter-btn, [data-breadcrumb='category1']");
-  const cat2Btn = target.closest(".category2-filter-btn");
+  const cat2Btn = target.closest(".category2-filter-btn, [data-breadcrumb='category2']");
 
   if (resetBtn) {
     selectedCat1 = null;
@@ -99,10 +179,8 @@ document.body.addEventListener("click", (e) => {
     const query = new URLSearchParams(location.search);
     query.delete("category1");
     query.delete("category2");
-    history.pushState(null, null, query.toString() ? `/?${query}` : "/");
 
-    updateCategoryUI(selectedCat1, selectedCat2);
-    refreshProducts();
+    pushWithNoRender({ path: query.toString() ? `/?${query}` : "/" });
   } else if (cat1Btn) {
     selectedCat1 = cat1Btn.dataset.category1;
     selectedCat2 = null;
@@ -111,9 +189,7 @@ document.body.addEventListener("click", (e) => {
     query.set("category1", selectedCat1);
     query.delete("category2");
 
-    history.pushState(null, null, `/?${query}`);
-    updateCategoryUI(selectedCat1, selectedCat2);
-    refreshProducts();
+    pushWithNoRender({ path: `/?${query}`, selectedCat1, selectedCat2 });
   } else if (cat2Btn) {
     selectedCat1 = cat2Btn.dataset.category1;
     selectedCat2 = cat2Btn.dataset.category2;
@@ -122,9 +198,7 @@ document.body.addEventListener("click", (e) => {
     query.set("category1", selectedCat1);
     query.set("category2", selectedCat2);
 
-    history.pushState(null, null, `/?${query}`);
-    updateCategoryUI(selectedCat1, selectedCat2);
-    refreshProducts();
+    pushWithNoRender({ path: `/?${query}`, selectedCat1, selectedCat2 });
   }
 });
 
@@ -136,8 +210,9 @@ document.addEventListener("change", (e) => {
   const query = new URLSearchParams(location.search);
   if (selectedLimit) query.set("limit", selectedLimit);
   if (selectedSort) query.set("sort", selectedSort);
-  history.pushState(null, null, `/?${query}`);
-  refreshProducts();
+  pushWithNoRender({ path: `/?${query}`, selectedCat1: null, selectedCat2: null });
+  // history.pushState(null, null, `/?${query}`);
+  // refreshProducts();
 });
 
 document.addEventListener("keydown", (e) => {
@@ -147,13 +222,25 @@ document.addEventListener("keydown", (e) => {
     const query = new URLSearchParams(location.search);
     if (keyword) {
       query.set("search", keyword);
-      history.pushState(null, null, `/?${query}`);
+      console.error(keyword);
+      // pushWithNoRender({ path: `/?${query}`, selectedCat1: null, selectedCat2: null });
+      push(`/?${query}`);
+      // history.pushState(null, null, `/?${query}`);
     } else {
       query.delete("search");
-      history.pushState(null, null, `/`);
+      pushWithNoRender({ path: `/`, selectedCat1: null, selectedCat2: null });
+      // history.pushState(null, null, `/`);
     }
 
-    refreshProducts();
+    // refreshProducts();
+  }
+  const isCartModalOpen = () => {
+    return document.getElementById("cart-modal-root")?.hasChildNodes() !== null;
+  };
+  if (e.key === "Escape" && isCartModalOpen()) {
+    e.preventDefault();
+    closeCartModal();
+    return;
   }
 });
 

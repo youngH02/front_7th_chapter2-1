@@ -1,10 +1,8 @@
-import { CartPage } from "../pages/CartPage";
 import { DetailPage } from "../pages/DetailPage";
 import { HomePage } from "../pages/HomePage";
 
 const routes = [
   { path: "/", component: HomePage },
-  { path: "/cart", component: CartPage },
   { path: "/products/:id", component: DetailPage },
 ];
 
@@ -24,13 +22,20 @@ export const findRoute = (pathname) => {
   return null;
 };
 
-export const push = (path) => {
-  history.pushState(null, null, path);
+export const push = (path, { silent = false } = {}) => {
+  const current = `${location.pathname}${location.search}`;
+  if (current === path) return;
 
-  // 화면 다시 그리기
-  // main.js의 render() 함수가 호출되어야 함
-  window.dispatchEvent(new Event("route-change"));
+  history.pushState(null, null, path);
+  if (!silent) {
+    window.dispatchEvent(new Event("route-change"));
+  }
 };
+//   history.pushState(null, null, path);
+//   // 화면 다시 그리기
+//   // main.js의 render() 함수가 호출되어야 함
+//   window.dispatchEvent(new Event("route-change"));
+// };
 
 export const initRouter = (renderFn) => {
   renderFn();
