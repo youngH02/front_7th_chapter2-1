@@ -1,11 +1,17 @@
+const CART_STORAGE_KEY = "shopping_cart";
+
+const loadStoredCart = () => {
+  try {
+    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+    return savedCart ? JSON.parse(savedCart) : [];
+  } catch (error) {
+    console.error("장바구니 정보를 불러오는 중 오류가 발생했습니다.", error);
+    return [];
+  }
+};
+
 export const cartStore = {
-  state: { cart: [] },
-  // state: {
-  //   cart: [
-  //     { productId: "1", title: "샘플상품", image: "sample.jpg", lprice: 1000, quantity: 1 },
-  //     { productId: "2", title: "샘플상품", image: "sample.jpg", lprice: 1000, quantity: 1 },
-  //   ],
-  // },
+  state: { cart: loadStoredCart() },
   observers: [],
   subscribe(observerFn) {
     if (typeof observerFn !== "function") return () => {};
@@ -18,7 +24,8 @@ export const cartStore = {
     };
   },
   notify() {
-    console.log("cartStore 상태 변경 알림:", this.state.cart);
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(this.state.cart));
+
     this.observers.forEach((observerFn) => observerFn(this.state.cart));
   },
   getTotalCount() {
