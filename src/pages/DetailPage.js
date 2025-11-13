@@ -9,9 +9,9 @@ const loadingSkeleton = `
   </div>
 </div>`;
 
-export const DetailPage = ({ loading, product }) => {
+export const DetailPage = ({ loading, product, relatedProducts = [] }) => {
   return PageLayout({
     isDetailPage: true,
-    children: loading ? loadingSkeleton : ProductDetail({ product }),
+    children: loading ? loadingSkeleton : ProductDetail({ product, relatedProducts }),
   });
 };

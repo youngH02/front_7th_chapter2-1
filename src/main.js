@@ -50,18 +50,18 @@ const render = async () => {
       products,
       loading: false,
     });
-  } else if (route.path === "/cart") {
-    $root.innerHTML = route.component();
   } else if (route.path === "/products/:id") {
     $root.innerHTML = route.component({ loading: true });
     const productId = params[0];
     const data = await getProduct(productId);
-    console.log("product data:", data);
     if (!data || data.error) {
       $root.innerHTML = NotFoundPage();
       return;
     }
-    $root.innerHTML = route.component({ product: data });
+    const related = await getProducts({ category2: data.category2, limit: 5 });
+    related.products = related.products.filter((p) => p.productId !== data.productId);
+    console.warn(related.products);
+    $root.innerHTML = route.component({ product: data, relatedProducts: related.products });
   }
 };
 const refreshProducts = async () => {
@@ -136,7 +136,6 @@ document.body.addEventListener("click", (e) => {
   const cartIncreaseBtn = target.closest(".quantity-increase-btn");
   const cartDecreaseBtn = target.closest(".quantity-decrease-btn");
   if (cartIncreaseBtn) {
-    console.log("increase clicked");
     const productId = cartIncreaseBtn.dataset.productId;
     cartStore.addToCart({ productId: productId });
   }
@@ -148,7 +147,6 @@ document.body.addEventListener("click", (e) => {
   const cartQuantityIncreaseBtn = target.closest("#quantity-increase");
   const cartQuantityDecreaseBtn = target.closest("#quantity-decrease");
   if (cartQuantityIncreaseBtn) {
-    console.log("increase clicked");
     const quantityInput = document.getElementById("quantity-input");
     quantityInput.value = Number(quantityInput.value) + 1;
   }
@@ -159,8 +157,11 @@ document.body.addEventListener("click", (e) => {
 
   //상품 카드 클릭
   const productCard = target.closest(".product-card");
-  if (productCard) {
-    push(`/products/${productCard.dataset.productId}`);
+  const relatedProductCard = target.closest(".related-product-card");
+  const productCardToOpen = relatedProductCard || productCard;
+  if (productCardToOpen) {
+    console.log("open product id:", productCardToOpen.dataset.productId);
+    push(`/products/${productCardToOpen.dataset.productId}`);
     return;
   }
 

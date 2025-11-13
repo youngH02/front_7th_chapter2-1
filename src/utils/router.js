@@ -31,11 +31,6 @@ export const push = (path, { silent = false } = {}) => {
     window.dispatchEvent(new Event("route-change"));
   }
 };
-//   history.pushState(null, null, path);
-//   // 화면 다시 그리기
-//   // main.js의 render() 함수가 호출되어야 함
-//   window.dispatchEvent(new Event("route-change"));
-// };
 
 export const initRouter = (renderFn) => {
   renderFn();
