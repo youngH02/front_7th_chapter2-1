@@ -6,6 +6,12 @@ import { NotFoundPage } from "./pages/NotFoundPage.js";
 import { cartStore } from "./store/cartStore.js";
 import { updateCategoryUI } from "./utils/categoryUI.js";
 import { findRoute, initRouter, push } from "./utils/router.js";
+import {
+  clearCartSelection,
+  getSelectedCartProductIds,
+  selectAllCartItems,
+  toggleCartItemSelection,
+} from "./components/cart/CartList.js";
 
 const enableMocking = () => {
   const workerScriptUrl = `${import.meta.env.BASE_URL ?? "/"}mockServiceWorker.js`;
@@ -19,6 +25,117 @@ const enableMocking = () => {
   );
 };
 const productCache = new Map();
+const normalizePath = (path = "/") => (path.endsWith("/") ? path : `${path}/`);
+const BASE_PATH = normalizePath(import.meta.env.BASE_URL || "/");
+
+const DEFAULT_LIMIT = 20;
+const infiniteScrollState = {
+  currentPage: 1,
+  isLoading: false,
+  hasMore: true,
+  accumulatedProducts: [],
+  filters: {
+    search: "",
+    category1: "",
+    category2: "",
+    limit: DEFAULT_LIMIT,
+    sort: "price_asc",
+  },
+};
+
+let selectedCat1 = null;
+let selectedCat2 = null;
+
+const isHomeRoute = () => normalizePath(location.pathname) === BASE_PATH;
+
+const buildFilterParams = ({ search = "", limit = DEFAULT_LIMIT, sort = "price_asc" }) => ({
+  search,
+  category1: selectedCat1 ?? "",
+  category2: selectedCat2 ?? "",
+  limit,
+  sort,
+});
+
+const initializeProductListState = ({ response, filters, shouldRender = false }) => {
+  if (!response) return;
+  const { products = [], pagination } = response;
+  infiniteScrollState.accumulatedProducts = [...products];
+  infiniteScrollState.currentPage = pagination?.page ?? 1;
+  infiniteScrollState.hasMore = pagination?.hasNext ?? products.length > 0;
+  infiniteScrollState.isLoading = false;
+  infiniteScrollState.filters = { ...filters };
+
+  products.forEach((product) => {
+    productCache.set(product.productId, product);
+  });
+
+  if (shouldRender) {
+    updateProductListDOM();
+  }
+};
+
+const updateProductListDOM = () => {
+  const $productListContainer = document.querySelector("#product-container");
+  if (!$productListContainer) return;
+  $productListContainer.outerHTML = ProductList({
+    loading: false,
+    products: infiniteScrollState.accumulatedProducts,
+    hasMore: infiniteScrollState.hasMore,
+  });
+};
+
+const showInfiniteScrollLoading = (isVisible) => {
+  const existing = document.getElementById("infinite-scroll-loading");
+  if (!isVisible) {
+    if (existing) existing.remove();
+    return;
+  }
+
+  if (existing) return;
+
+  const container = document.querySelector("#product-container");
+  if (!container) return;
+
+  const loader = document.createElement("div");
+  loader.id = "infinite-scroll-loading";
+  loader.className = "text-center py-4 text-sm text-gray-500";
+  loader.textContent = "상품을 불러오는 중...";
+  container.appendChild(loader);
+};
+
+const loadNextPage = async () => {
+  if (!isHomeRoute()) return;
+  if (infiniteScrollState.isLoading || !infiniteScrollState.hasMore) return;
+
+  infiniteScrollState.isLoading = true;
+  showInfiniteScrollLoading(true);
+  const nextPage = infiniteScrollState.currentPage + 1;
+
+  try {
+    const response = await getProducts({
+      ...infiniteScrollState.filters,
+      page: nextPage,
+    });
+    const nextProducts = response?.products ?? [];
+    if (nextProducts.length === 0) {
+      infiniteScrollState.hasMore = false;
+      return;
+    }
+    nextProducts.forEach((product) => {
+      productCache.set(product.productId, product);
+    });
+
+    infiniteScrollState.accumulatedProducts = [...infiniteScrollState.accumulatedProducts, ...nextProducts];
+    infiniteScrollState.currentPage = response?.pagination?.page ?? nextPage;
+    infiniteScrollState.hasMore = response?.pagination?.hasNext ?? false;
+    updateProductListDOM();
+  } catch (error) {
+    console.error("무한 스크롤 상품 로드 실패:", error);
+  } finally {
+    infiniteScrollState.isLoading = false;
+    showInfiniteScrollLoading(false);
+  }
+};
 
 const render = async () => {
   const $root = document.querySelector("#root");
@@ -39,16 +156,16 @@ const render = async () => {
     selectedCat1 = query.get("category1") || null;
     selectedCat2 = query.get("category2") || null;
     const search = query.get("search") || "";
-    const limit = Number(query.get("limit")) || 500;
+    const limit = Number(query.get("limit")) || DEFAULT_LIMIT;
     const sort = query.get("sort") || "price_asc";
-    //TODO : Q. 병렬 구성은 어려울까?? (렌더링을 html태그 단위로 하게 될것같아서, 내부에서 처리해야하나???)
     const [categories, products] = await Promise.all([
       getCategories(),
       getProducts({ search: search, category1: selectedCat1, category2: selectedCat2, limit, sort }),
     ]);
 
-    products.products.forEach((product) => {
-      productCache.set(product.productId, product);
+    initializeProductListState({
+      response: products,
+      filters: buildFilterParams({ search, limit, sort }),
     });
     $root.innerHTML = route.component({
       categories,
@@ -71,20 +188,17 @@ const render = async () => {
 const refreshProducts = async () => {
   const query = new URLSearchParams(location.search);
   const search = query.get("search") || "";
-  const limit = Number(query.get("limit")) || 500;
+  const limit = Number(query.get("limit"));
   const sort = query.get("sort") || "price_asc";
   const [products] = await Promise.all([
     getProducts({ search, category1: selectedCat1, category2: selectedCat2, limit, sort }),
   ]);
-  const $productListContainer = document.querySelector("#product-container");
 
-  if ($productListContainer) {
-    $productListContainer.outerHTML = ProductList({
-      loading: false,
-      products: products.products,
-    });
-  }
-  query.set("search", "");
+  initializeProductListState({
+    response: products,
+    filters: buildFilterParams({ search, limit, sort }),
+    shouldRender: true,
+  });
 };
 
 const pushWithNoRender = ({ path, selectedCat1 = null, selectedCat2 = null }) => {
@@ -97,9 +211,6 @@ const pushWithNoRender = ({ path, selectedCat1 = null, selectedCat2 = null }) =>
   }
 };
 /* 이벤트 등록 영역 */
-// 카테고리 상태 관리
-let selectedCat1 = null;
-let selectedCat2 = null;
 // 통합 클릭 이벤트 핸들러
 document.body.addEventListener("click", (e) => {
   const target = e.target;
@@ -163,15 +274,16 @@ document.body.addEventListener("click", (e) => {
   // 장바구니 삭제(선택, 전체)
   const cartRemoveBtn = target.closest("#cart-modal-remove-selected-btn");
   if (cartRemoveBtn) {
-    const checkedBoxes = document.querySelectorAll("#cart-list-container .cart-item-checkbox:checked");
-    const selectedProductIds = Array.from(checkedBoxes).map((checkbox) => checkbox.dataset.productId);
-    // 이제 selectedProductIds를 cartStore에서 삭제 처리
-    cartStore.removeProducts(selectedProductIds);
+    const selectedProductIds = getSelectedCartProductIds();
+    if (selectedProductIds.length > 0) {
+      cartStore.removeProducts(selectedProductIds);
+    }
   }
 
   const cartClear = target.closest("#cart-modal-clear-cart-btn");
   if (cartClear) {
     cartStore.clearCart();
+    clearCartSelection();
   }
 
   //상품 카드 클릭
@@ -239,40 +351,14 @@ document.addEventListener("change", (e) => {
   // 장바구니 전체 체크박스
   const cartSelectAllCheckbox = target.closest("#cart-modal-select-all-checkbox");
   if (cartSelectAllCheckbox) {
-    const isChecked = cartSelectAllCheckbox.checked;
-    const itemCheckboxes = document.querySelectorAll("#cart-list-container .cart-item-checkbox");
-    itemCheckboxes.forEach((checkbox) => {
-      checkbox.checked = isChecked;
-    });
+    selectAllCartItems(cartSelectAllCheckbox.checked);
+    return;
   }
-  // 장바구니 개별 상품 체크박스 클릭
-  const itemCheckboxes = document.querySelectorAll("#cart-list-container .cart-item-checkbox");
-  if (itemCheckboxes) {
-    const checkedCheckboxes = document.querySelectorAll("#cart-list-container .cart-item-checkbox:checked");
-    const allChecked = Array.from(itemCheckboxes).every((cb) => cb.checked);
-    const selectAll = document.getElementById("cart-modal-select-all-checkbox");
-    if (selectAll) selectAll.checked = allChecked;
 
-    const selectedRemoveBtn = document.getElementById("cart-modal-remove-selected-btn");
-    if (selectedRemoveBtn) {
-      const selectedAmount = document.getElementById("cart-selected-amount");
-      if (checkedCheckboxes.length > 0) {
-        selectedRemoveBtn.style.display = "block";
-        selectedRemoveBtn.textContent = `선택한 상품 삭제 (${checkedCheckboxes.length}개)`;
-
-        selectedAmount.style.display = "flex";
-        const totalSelectedAmount = Array.from(checkedCheckboxes).reduce((sum, checkbox) => {
-          const productId = checkbox.dataset.productId;
-          const item = cartStore.state.cart.find((item) => item.productId === productId);
-          return sum + (item ? item.lprice * item.quantity : 0);
-        }, 0);
-        selectedAmount.innerHTML = `<span class="text-gray-600">선택한 상품 (${checkedCheckboxes.length}개)</span>
-        <span class="font-medium">${totalSelectedAmount.toLocaleString()}원</span>`;
-      } else {
-        if (selectedRemoveBtn) selectedRemoveBtn.style.display = "none";
-        if (selectedAmount) selectedAmount.style.display = "none";
-      }
-    }
+  const cartItemCheckbox = target.closest(".cart-item-checkbox");
+  if (cartItemCheckbox) {
+    toggleCartItemSelection(cartItemCheckbox.dataset.productId, cartItemCheckbox.checked);
+    return;
   }
 });
 
@@ -304,35 +390,9 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-let currentPage = 1;
-let isLoading = false;
-let hasMore = true;
-
-window.addEventListener("scroll", async () => {
-  if (!hasMore || isLoading) return;
-  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
-    isLoading = true;
-    console.log("scroll: ", currentPage);
-    const newProducts = await getProducts({ page: currentPage + 1 });
-    if (newProducts.length === 0) {
-      hasMore = false;
-    } else {
-      // products = [...products, ...newProducts];
-      // renderProductList(products); // 또는 append 방식
-
-      const $productListContainer = document.querySelector("#product-container");
-
-      if ($productListContainer) {
-        $productListContainer.outerHTML = ProductList({
-          loading: false,
-          products: newProducts.products,
-        });
-      }
-
-      currentPage++;
-    }
-    isLoading = false;
-  }
+window.addEventListener("scroll", () => {
+  if (window.innerHeight + window.scrollY < document.body.offsetHeight - 200) return;
+  loadNextPage();
 });
 
 initRouter(render);

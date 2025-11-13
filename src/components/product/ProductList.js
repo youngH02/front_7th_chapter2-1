@@ -46,7 +46,7 @@ const ProductItem = ({ productId, title, image, lprice, brand }) => {
 `;
 };
 
-export const ProductList = ({ loading, products }) => {
+export const ProductList = ({ loading, products = [], hasMore = true }) => {
   return /*html*/ `
 <!-- 상품 목록 -->
 <div class="mb-6">
@@ -70,16 +70,19 @@ export const ProductList = ({ loading, products }) => {
         <div class="grid grid-cols-2 gap-4 mb-6" id="products-grid">
           ${products.map(ProductItem).join("")}
         </div>
-
-        <div class="text-center py-4 text-sm text-gray-500">
+        <!-- 무한스크롤 트리거 -->
+        <div id="infinite-scroll-trigger" style="height: 1px;"></div>
+        ${
+          hasMore
+            ? ""
+            : `<div class="text-center py-4 text-sm text-gray-500" id="infinite-scroll-complete">
           모든 상품을 확인했습니다
-        </div>
+        </div>`
+        }
       </div>
     </div>
-
     `
     }
-
   </div>
 </div>
 `;
