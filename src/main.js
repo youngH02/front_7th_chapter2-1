@@ -34,6 +34,7 @@ const infiniteScrollState = {
   isLoading: false,
   hasMore: true,
   accumulatedProducts: [],
+  totalCount: 0,
   filters: {
     search: "",
     category1: "",
@@ -62,6 +63,7 @@ const initializeProductListState = ({ response, filters, shouldRender = false })
   infiniteScrollState.accumulatedProducts = [...products];
   infiniteScrollState.currentPage = pagination?.page ?? 1;
   infiniteScrollState.hasMore = pagination?.hasNext ?? products.length > 0;
+  infiniteScrollState.totalCount = pagination?.total ?? products.length;
   infiniteScrollState.isLoading = false;
   infiniteScrollState.filters = { ...filters };
 
@@ -81,6 +83,7 @@ const updateProductListDOM = () => {
     loading: false,
     products: infiniteScrollState.accumulatedProducts,
     hasMore: infiniteScrollState.hasMore,
+    totalCount: infiniteScrollState.totalCount,
   });
 };
 
@@ -128,6 +131,7 @@ const loadNextPage = async () => {
     infiniteScrollState.accumulatedProducts = [...infiniteScrollState.accumulatedProducts, ...nextProducts];
     infiniteScrollState.currentPage = response?.pagination?.page ?? nextPage;
     infiniteScrollState.hasMore = response?.pagination?.hasNext ?? false;
+    infiniteScrollState.totalCount = response?.pagination?.total ?? infiniteScrollState.totalCount;
     updateProductListDOM();
   } catch (error) {
     console.error("무한 스크롤 상품 로드 실패:", error);
