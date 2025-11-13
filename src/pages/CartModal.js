@@ -1,5 +1,4 @@
-import { CartHeader } from "../components/cart/CartHeader";
-import { CartList } from "../components/cart/CartList";
+import { CartHeader, CartList } from "../components/cart";
 
 let isOpen = false;
 const MODAL_ROOT_ID = "cart-modal-root";

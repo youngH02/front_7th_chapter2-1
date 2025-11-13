@@ -1,4 +1,4 @@
-import { CartIcon } from "../cart/CartIcon";
+import { CartIcon } from "../cart";
 
 export const Header = () => {
   return /*html*/ `

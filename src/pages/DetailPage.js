@@ -1,4 +1,4 @@
-import { ProductDetail } from "../components/ProductDetail.js";
+import { ProductDetail } from "../components/product";
 import { PageLayout } from "./PageLayout.js";
 
 const loadingSkeleton = `

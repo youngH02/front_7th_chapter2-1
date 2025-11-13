@@ -1,5 +1,5 @@
 import { getCategories, getProduct, getProducts } from "./api/productApi.js";
-import { ProductList } from "./components/ProductList.js";
+import { ProductList } from "./components/product/ProductList.js";
 import { destroyCartList } from "./components/cart/CartList.js";
 import { showToast } from "./components/toast/Toast.js";
 import { closeCartModal, openCartModal } from "./pages/CartModal.js";
@@ -49,9 +49,6 @@ const render = async () => {
       categories,
       products,
       loading: false,
-      selectedCat1,
-      selectedCat2,
-      currentSearch: search,
     });
   } else if (route.path === "/cart") {
     $root.innerHTML = route.component();
@@ -222,7 +219,6 @@ document.addEventListener("keydown", (e) => {
     const query = new URLSearchParams(location.search);
     if (keyword) {
       query.set("search", keyword);
-      console.error(keyword);
       // pushWithNoRender({ path: `/?${query}`, selectedCat1: null, selectedCat2: null });
       push(`/?${query}`);
       // history.pushState(null, null, `/?${query}`);

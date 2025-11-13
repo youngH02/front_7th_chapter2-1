@@ -34,10 +34,10 @@ export const cartStore = {
   addToCart(product) {
     const existingItem = this.state.cart.find((item) => item.productId === product.productId);
     if (existingItem) {
-      console.log("존재하는 장바구니에 추가:", existingItem);
+      console.log("장바구니 갯수 추가:", existingItem.productId);
       existingItem.quantity += 1;
     } else {
-      console.log("장바구니에 추가:", product);
+      console.log("장바구니 신규 추가:", product.productId);
       const cartItem = {
         productId: product.productId,
         title: product.title || "",

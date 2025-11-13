@@ -1,5 +1,4 @@
-import { HeaderDetail } from "../components/layout/HedearDetail.js";
-import { Header, Footer } from "../components/index.js";
+import { Footer, Header, HeaderDetail } from "../components/layout";
 
 export const PageLayout = ({ children, isDetailPage = false }) => {
   return /*html*/ `
